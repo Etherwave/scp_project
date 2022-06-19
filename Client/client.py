@@ -91,13 +91,21 @@ class SCPClient:
             print("scp file {0} failed!".format(src_file_path))
             pass
 
-    def get_server_project_message_digest_str(self, project_path):
-        self.tcp_client.send(config.command.get_server_project_message_digest_str+"\n"+project_path)
-        server_project_message_digest_str = self.tcp_client.recv()
-        return server_project_message_digest_str
+    def get_server_project_files(self, project_path):
+        self.tcp_client.send(config.command.get_server_project_files+"\n"+project_path)
+        server_project_files_bytes = self.tcp_client.recv()
+        return server_project_files_bytes
+
+    def get_server_project_folders(self, project_path):
+        self.tcp_client.send(config.command.get_server_project_folders+"\n"+project_path)
+        server_project_folders_bytes = self.tcp_client.recv()
+        return server_project_folders_bytes
 
     def delete_server_file(self, file_path):
         self.tcp_client.send(config.command.delete_server_file+"\n"+file_path)
+
+    def delete_server_folder(self, folder_path):
+        self.tcp_client.send(config.command.delete_server_folder + "\n" + folder_path)
 
     def create_server_folder(self, folder_path):
         self.tcp_client.send(config.command.create_server_folder+"\n"+folder_path)
@@ -109,10 +117,12 @@ class SCPClient:
         return data_str == "1"
 
     def show_project_different(self, local_project_path, server_project_path):
-        server_project_message_digest_str = self.get_server_project_message_digest_str(server_project_path)
+        server_project_files_bytes = self.get_server_project_files(server_project_path)
+        server_project_folder_bytes = self.get_server_project_folders(server_project_path)
         file_change_detector = FileChangeDetector(local_project_path)
-        file_change_detector.load_server_files(server_project_message_digest_str)
+        file_change_detector.load_server_files_folders(server_project_files_bytes, server_project_folder_bytes)
         created_files, changed_files, deleted_files = file_change_detector.get_created_changed_deleted_files()
+        created_folders, deleted_folders = file_change_detector.get_created_deleted_folders()
         print("create files:")
         for i in range(len(created_files)):
             print(created_files[i].file_path)
@@ -122,55 +132,163 @@ class SCPClient:
         print("deleted files:")
         for i in range(len(deleted_files)):
             print(deleted_files[i].file_path)
+        print("created_folders")
+        for i in range(len(created_folders)):
+            print(created_folders[i])
+        print("deleted_folders")
+        for i in range(len(deleted_folders)):
+            print(deleted_folders[i])
 
-    def update_project_without_delete(self, local_project_path, server_project_path):
-        server_project_message_digest_str = self.get_server_project_message_digest_str(server_project_path)
-        file_change_detector = FileChangeDetector(local_project_path)
-        file_change_detector.load_server_files(server_project_message_digest_str)
-        created_files, changed_files, deleted_files = file_change_detector.get_created_changed_deleted_files()
-        print("create files:")
-        for i in range(len(created_files)):
-            print(created_files[i].file_path)
-            src_file_path = created_files[i].file_path
-            src_file_project_path = created_files[i].project_path
-            src_file_relative_path = src_file_path[len(src_file_project_path):]
-            target_file_path = server_project_path + src_file_relative_path
-            self.scp_file(src_file_path, target_file_path, server_project_path)
-        print("changed files:")
-        for i in range(len(changed_files)):
-            print(changed_files[i].file_path)
-            src_file_path = changed_files[i].file_path
-            src_file_project_path = changed_files[i].project_path
-            src_file_relative_path = src_file_path[len(src_file_project_path):]
-            target_file_path = server_project_path + src_file_relative_path
-            self.scp_file(src_file_path, target_file_path, server_project_path)
+    def remove_file_path_file_name_left_folder_path(self, file_path):
+        file_name_start = file_path.rfind("/")
+        folder_path = file_path[:file_name_start]
+        return folder_path
 
-    def update_project(self, local_project_path, server_project_path):
+    def update_project_with_protect_folder_and_files(self, local_project_path, server_project_path, protect_files_path, protect_folders_path):
         self.create_server_folder(server_project_path)
-        server_project_message_digest_str = self.get_server_project_message_digest_str(server_project_path)
+        server_project_files_bytes = self.get_server_project_files(server_project_path)
+        server_project_folder_bytes = self.get_server_project_folders(server_project_path)
         file_change_detector = FileChangeDetector(local_project_path)
-        file_change_detector.load_server_files(server_project_message_digest_str)
+        file_change_detector.load_server_files_folders(server_project_files_bytes, server_project_folder_bytes)
         created_files, changed_files, deleted_files = file_change_detector.get_created_changed_deleted_files()
+        created_folders, deleted_folders = file_change_detector.get_created_deleted_folders()
         print("create files:")
         for i in range(len(created_files)):
-            print(created_files[i].file_path)
+
             src_file_path = created_files[i].file_path
             src_file_project_path = created_files[i].project_path
             src_file_relative_path = src_file_path[len(src_file_project_path):]
-            target_file_path = server_project_path+src_file_relative_path
+            target_file_path = server_project_path + src_file_relative_path
+
+            flag = False
+            j = 0
+            protect_info = ""
+            while j < len(protect_files_path) and flag == False:
+                if src_file_path == protect_files_path[j]:
+                    flag = True
+                    protect_info = "create "+target_file_path+" failed! because "+protect_files_path[j] +" protected!"
+                j += 1
+            j = 0
+            while j < len(protect_folders_path) and flag == False:
+                # 注意判断一个文件是否属于某一个文件夹的时候，不能简单的用startswith，反例：D:/1 指文件夹 D:/1.txt前缀是那个文件夹，但不在那里面
+                # 可以先去除掉文件路径的最后一个/及之后的东西，这样就不包含文件名了，就只剩下了目录，此时就可以用startswith了
+                src_file_folder = self.remove_file_path_file_name_left_folder_path(src_file_path)
+                target_file_folder = self.remove_file_path_file_name_left_folder_path(target_file_path)
+                if str(src_file_folder).startswith(protect_folders_path[j]) or str(target_file_folder).startswith(protect_folders_path[j]):
+                    flag = True
+                    protect_info = "create " + target_file_path + " failed! because " + protect_folders_path[
+                        j] + " protected!"
+                j += 1
+            if flag:
+                print(protect_info)
+                continue
+            print(target_file_path)
             self.scp_file(src_file_path, target_file_path, server_project_path)
         print("changed files:")
         for i in range(len(changed_files)):
-            print(changed_files[i].file_path)
             src_file_path = changed_files[i].file_path
             src_file_project_path = changed_files[i].project_path
             src_file_relative_path = src_file_path[len(src_file_project_path):]
             target_file_path = server_project_path + src_file_relative_path
+
+            flag = False
+            j = 0
+            protect_info = ""
+            while j < len(protect_files_path) and flag == False:
+                if src_file_path == protect_files_path[j]:
+                    flag = True
+                    protect_info = "change " + target_file_path + " failed! because " + protect_files_path[
+                        j] + " protected!"
+                j += 1
+            j = 0
+            while j < len(protect_folders_path) and flag == False:
+                src_file_folder = self.remove_file_path_file_name_left_folder_path(src_file_path)
+                target_file_folder = self.remove_file_path_file_name_left_folder_path(target_file_path)
+                if str(src_file_folder).startswith(protect_folders_path[j]) or str(target_file_folder).startswith(
+                        protect_folders_path[j]):
+                    flag = True
+                    protect_info = "change " + target_file_path + " failed! because " + protect_folders_path[
+                        j] + " protected!"
+                j += 1
+            if flag:
+                print(protect_info)
+                continue
+            print(target_file_path)
             self.scp_file(src_file_path, target_file_path, server_project_path)
         print("deleted files:")
         for i in range(len(deleted_files)):
+
+            flag = False
+            j = 0
+            protect_info = ""
+            while j < len(protect_files_path) and flag == False:
+                if deleted_files[i].file_path == protect_files_path[j]:
+                    flag = True
+                    protect_info = "delete " + deleted_files[i].file_path + " failed! because " + protect_files_path[
+                        j] + " protected!"
+                j += 1
+            j = 0
+            while j < len(protect_folders_path) and flag == False:
+                deleted_file_folder = self.remove_file_path_file_name_left_folder_path(deleted_files[i].file_path)
+                if str(deleted_file_folder).startswith(protect_folders_path[j]):
+                    flag = True
+                    protect_info = "delete " + deleted_files[i].file_path + " failed! because " + protect_folders_path[
+                        j] + " protected!"
+                j += 1
+            if flag:
+                print(protect_info)
+                continue
             print(deleted_files[i].file_path)
             self.delete_server_file(deleted_files[i].file_path)
+        print("created_folders")
+        for i in range(len(created_folders)):
+            local_folder_path = created_folders[i]
+            local_folder_relative_path = local_folder_path[len(local_folder_path):]
+            server_folder_path = server_project_path + local_folder_relative_path
+
+            flag = False
+            j = 0
+            protect_info = ""
+            while j < len(protect_folders_path) and flag == False:
+                if str(local_folder_path).startswith(protect_folders_path[j]) or str(
+                        server_folder_path).startswith(protect_folders_path[j]):
+                    flag = True
+                    protect_info = "create " + server_folder_path + " failed! because " + protect_folders_path[
+                    j] + " protected!"
+                j += 1
+            if flag:
+                print(protect_info)
+                continue
+            print(server_folder_path)
+            self.create_server_folder(server_folder_path)
+        print("deleted_folders")
+        for i in range(len(deleted_folders)):
+            server_folder_path = deleted_folders[i].folder_path
+
+            # 这里需要注意，判断一个目录是否可以删除不能只看有没有保护它或它的父目录，而且要看有没有保护它的子目录或子文件，因为
+            # 如果有人保护它的子目录或子文件也相当于保护了这个目录
+            flag = False
+            j = 0
+            protect_info = ""
+            while j < len(protect_files_path) and flag == False:
+                protect_file_folder = self.remove_file_path_file_name_left_folder_path(protect_files_path[j])
+                if str(protect_file_folder).startswith(server_folder_path):
+                    flag = True
+                    protect_info = "delete " + server_folder_path + " failed! because " + protect_files_path[
+                    j] + " protected!"
+                j += 1
+            j = 0
+            while j < len(protect_folders_path) and flag == False:
+                if str(server_folder_path).startswith(protect_folders_path[j]):
+                    flag = True
+                    protect_info = "delete " + server_folder_path + " failed! because " + protect_folders_path[
+                    j] + " protected!"
+                j += 1
+            if flag:
+                print(protect_info)
+                continue
+            print(server_folder_path)
+            self.delete_server_folder(server_folder_path)
 
 if __name__ == '__main__':
     if len(sys.argv) == 3:
@@ -180,4 +298,15 @@ if __name__ == '__main__':
         project_path, server_project_path = config.client.project_path, config.server.project_path
     my_scp_client = SCPClient()
     # my_scp_client.show_project_different(config.client.project_path, config.server.project_path)
-    my_scp_client.update_project(project_path, server_project_path)
+    # my_scp_client.update_project(project_path, server_project_path)
+
+    protect_files = [
+        "C:/Users/Amazing/Desktop/test_project/222/2222.txt",
+    ]
+    protect_folders = [
+        "D:/test_project/asdasd",
+        "C:/Users/Amazing/Desktop/test_project/1",
+        "C:/Users/Amazing/Desktop/test_project/dd",
+    ]
+
+    my_scp_client.update_project_with_protect_folder_and_files(project_path, server_project_path, protect_files, protect_folders)

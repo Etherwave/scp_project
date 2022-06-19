@@ -94,9 +94,13 @@ class SCPServer:
             args = data_str_split[1:]
             print(command)
 
-            if command == config.command.get_server_project_message_digest_str:
+            if command == config.command.get_server_project_files:
                 print(args[0])
-                data = self.get_server_project_message_digest_str(args[0])
+                data = self.get_server_project_files(args[0])
+                self.send(client_socket, data)
+            elif command == config.command.get_server_project_folders:
+                print(args[0])
+                data = self.get_server_project_folders(args[0])
                 self.send(client_socket, data)
             elif command == config.command.delete_server_file:
                 print(args[0])
@@ -114,14 +118,26 @@ class SCPServer:
 
         client_socket.close()
 
-    def get_server_project_message_digest_str(self, project_path):
-        folder_record = FolderRecord(project_path, project_path, config.server.message_digest_algorithm)
+    def get_server_project_files(self, project_path):
+        folder_record = FolderRecord()
+        folder_record.init_from_folder(project_path, project_path, config.server.message_digest_algorithm)
         files = folder_record.get_files()
         data = ""
         for i in range(len(files)):
             if i != 0:
                 data += "\n"
             data = data+str(files[i])
+        return data
+
+    def get_server_project_folders(self, project_path):
+        folder_record = FolderRecord()
+        folder_record.init_from_folder(project_path, project_path, config.server.message_digest_algorithm)
+        folders = folder_record.get_folders()
+        data = ""
+        for i in range(len(folders)):
+            if i != 0:
+                data += "\n"
+            data = data + str(folders[i])
         return data
 
     def delete_server_file(self, file_path):
