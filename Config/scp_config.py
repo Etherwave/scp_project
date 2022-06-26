@@ -4,9 +4,9 @@ config = CN()
 
 config.server = CN()
 config.server.port = 9999
-config.server.ip = "127.0.0.1"
+config.server.ip = ""
 config.server.buff_size = 40960
-config.server.project_path = "C:/Users/Amazing/Desktop/test_project"
+config.server.project_path = "/media/zxr409/data1/python_data/SiamRPNPP_Change"
 config.server.message_digest_algorithm = "SHA512"
 
 
@@ -14,7 +14,7 @@ config.client = CN()
 config.client.port = 8888
 config.client.ip = "127.0.0.1"
 config.client.buff_size = 40960
-config.client.project_path = "D:/test_project"
+config.client.project_path = "D:/python/python_data/SiamRPNPP_Change"
 config.client.message_digest_algorithm = "SHA512"
 
 config.command = CN()

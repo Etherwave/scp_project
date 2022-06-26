@@ -6,6 +6,7 @@ import multiprocessing
 import struct
 from Functions.Base163264 import *
 import time
+import shutil
 
 class TCPServer:
 
@@ -105,6 +106,9 @@ class SCPServer:
             elif command == config.command.delete_server_file:
                 print(args[0])
                 self.delete_server_file(args[0])
+            elif command == config.command.delete_server_folder:
+                print(args[0])
+                self.delete_server_folder(args[0])
             elif command == config.command.create_server_folder:
                 print(args[0])
                 self.create_server_folder(args[0])
@@ -143,6 +147,12 @@ class SCPServer:
     def delete_server_file(self, file_path):
         try:
             os.remove(file_path)
+        except:
+            pass
+
+    def delete_server_folder(self, folder_path):
+        try:
+            shutil.rmtree(folder_path)
         except:
             pass
 

@@ -242,8 +242,8 @@ class SCPClient:
             self.delete_server_file(deleted_files[i].file_path)
         print("created_folders")
         for i in range(len(created_folders)):
-            local_folder_path = created_folders[i]
-            local_folder_relative_path = local_folder_path[len(local_folder_path):]
+            local_folder_path = created_folders[i].folder_path
+            local_folder_relative_path = local_folder_path[len(local_project_path):]
             server_folder_path = server_project_path + local_folder_relative_path
 
             flag = False
@@ -298,15 +298,16 @@ if __name__ == '__main__':
         project_path, server_project_path = config.client.project_path, config.server.project_path
     my_scp_client = SCPClient()
     # my_scp_client.show_project_different(config.client.project_path, config.server.project_path)
-    # my_scp_client.update_project(project_path, server_project_path)
 
     protect_files = [
-        "C:/Users/Amazing/Desktop/test_project/222/2222.txt",
+
     ]
     protect_folders = [
-        "D:/test_project/asdasd",
-        "C:/Users/Amazing/Desktop/test_project/1",
-        "C:/Users/Amazing/Desktop/test_project/dd",
+        "/media/zxr409/data1/python_data/SiamRPNPP_Change/train/SiamRPNPP_FeatureMap_Train/train_log",
+        "/media/zxr409/data1/python_data/SiamRPNPP_Change/train/SiamRPNPP_Train/train_log",
+        "/media/zxr409/data1/python_data/SiamRPNPP_Change/train/SiamRPNPPChange_FeatureMap_Train/train_log",
+        "/media/zxr409/data1/python_data/SiamRPNPP_Change/train/SiamRPNPPChange_Train/train_log",
+        "/media/zxr409/data1/python_data/SiamRPNPP_Change/save",
     ]
 
     my_scp_client.update_project_with_protect_folder_and_files(project_path, server_project_path, protect_files, protect_folders)
